@@ -149,9 +149,49 @@ describe('#Routes - test switch for api response', () => {
     expect(params.response.writeHead).toHaveBeenCalledWith(500);
     expect(params.response.end).toHaveBeenCalled();
   });
+});
 
-  describe('exceptions', () => {
-    test.todo(`given inexistent file ir should respond with 404 `);
-    test.todo(`given an error it should respond with 500 `);
+describe('exceptions', () => {
+  beforeEach(() => {
+    jest.restoreAllMocks();
+    jest.clearAllMocks();
+  });
+
+  test(`POST /unknown - given an inexistent route it should response with 404`, async () => {
+    const params = TestUtil.defaultHandleParams();
+
+    params.request.method = 'POST';
+    params.request.url = 'unknown';
+    await handler(...params.values());
+    expect(params.response.writeHead).toHaveBeenCalledWith(404);
+    expect(params.response.end).toHaveBeenCalled();
+  });
+
+  test(`given inexistent file it should response with 404`, async () => {
+    const params = TestUtil.defaultHandleParams();
+
+    params.request.method = 'GET';
+    params.request.url = 'index.png';
+
+    jest
+      .spyOn(Controller.prototype, Controller.prototype.getFileStream.name)
+      .mockRejectedValue(new Error('Error: ENOENT: no such file or direct'));
+
+    await handler(...params.values());
+    expect(params.response.writeHead).toHaveBeenCalledWith(404);
+    expect(params.response.end).toHaveBeenCalled();
+  });
+
+  test(`given an error it should respond with 500`, async () => {
+    const params = TestUtil.defaultHandleParams();
+
+    params.request.method = 'GET';
+    params.request.url = 'index.png';
+
+    jest.spyOn(Controller.prototype, Controller.prototype.getFileStream.name).mockRejectedValue(new Error('Error:'));
+
+    await handler(...params.values());
+    expect(params.response.writeHead).toHaveBeenCalledWith(500);
+    expect(params.response.end).toHaveBeenCalled();
   });
 });
