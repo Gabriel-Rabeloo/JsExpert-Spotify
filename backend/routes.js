@@ -1,3 +1,5 @@
+import { once } from 'events';
+
 import config from './config.js';
 import { Controller } from './controller.js';
 import { logger } from './util.js';
@@ -33,6 +35,22 @@ const routes = async (request, response) => {
     return stream.pipe(response);
   }
 
+  if (method === 'GET' && url.includes('/stream')) {
+    const { stream, onClose } = controller.createClientStream();
+
+    request.once('close', onClose);
+    response.writeHead(200, { 'Content-type': 'audio/mpeg', 'Accept-Rages': 'bytes' });
+
+    return stream.pipe(response);
+  }
+
+  if (method === 'POST' && url === '/controller') {
+    const data = await once(request, 'data');
+    const item = JSON.parse(data);
+    const result = await controller.handleCommand(item);
+    return response.end(JSON.stringify(result));
+  }
+
   // files
   if (method === 'GET') {
     const { stream, type } = await controller.getFileStream(url);
@@ -57,7 +75,7 @@ export const handleError = (error, response) => {
     return response.end();
   }
 
-  logger.error(`caught error on API${error.stack} `);
+  logger.error(`caught error on API ${error.stack} `);
   response.writeHead(500);
   return response.end();
 };
