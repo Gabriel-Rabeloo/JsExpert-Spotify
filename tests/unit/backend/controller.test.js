@@ -26,4 +26,68 @@ describe('#Controller - test suite for controller calls', () => {
     expect(stream).toStrictEqual(mockStream);
     expect(type).toStrictEqual(mockType);
   });
+
+  test('#createClientStream', async () => {
+    const mockStream = TestUtil.generateReadableStream(['test']);
+    const mockId = '1';
+    jest.spyOn(Service.prototype, Service.prototype.createClientStream.name).mockReturnValue({
+      id: mockId,
+      clientStream: mockStream,
+    });
+
+    jest.spyOn(Service.prototype, Service.prototype.removeClientStream.name).mockReturnValue();
+
+    const controller = new Controller();
+    const { stream, onClose } = controller.createClientStream();
+
+    onClose();
+
+    expect(stream).toStrictEqual(mockStream);
+    expect(Service.prototype.removeClientStream).toHaveBeenCalledWith(mockId);
+    expect(Service.prototype.createClientStream).toHaveBeenCalled();
+  });
+
+  describe('handleCommand', () => {
+    test('command stop', async () => {
+      jest.spyOn(Service.prototype, Service.prototype.stopStreaming.name).mockResolvedValue();
+
+      const controller = new Controller();
+      const data = {
+        command: '   stop   ',
+      };
+      const result = await controller.handleCommand(data);
+      expect(result).toStrictEqual({
+        result: 'ok',
+      });
+      expect(Service.prototype.stopStreaming).toHaveBeenCalled();
+    });
+
+    test('command start', async () => {
+      jest.spyOn(Service.prototype, Service.prototype.startStreaming.name).mockResolvedValue();
+
+      const controller = new Controller();
+      const data = {
+        command: ' START ',
+      };
+      const result = await controller.handleCommand(data);
+      expect(result).toStrictEqual({
+        result: 'ok',
+      });
+      expect(Service.prototype.startStreaming).toHaveBeenCalled();
+    });
+
+    test('non existing command', async () => {
+      jest.spyOn(Service.prototype, Service.prototype.startStreaming.name).mockResolvedValue();
+
+      const controller = new Controller();
+      const data = {
+        command: ' NON EXISTING ',
+      };
+      const result = await controller.handleCommand(data);
+      expect(result).toStrictEqual({
+        result: 'ok',
+      });
+      expect(Service.prototype.startStreaming).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -3,8 +3,15 @@ import superTest from 'supertest';
 import portFinder from 'portfinder';
 import { Transform } from 'stream';
 import { setTimeout } from 'timers/promises';
+import fs from 'fs';
 
 import Server from '../../../backend/server.js';
+import config from '../../../backend/config.js';
+
+const {
+  dir: { publicDirectory },
+  pages: { homeHTML, controllerHTML },
+} = config;
 
 const RETENTION_DATA_PERIOD = 200;
 
@@ -20,6 +27,8 @@ describe('API E2E Suite Test', () => {
     stop: 'stop',
   };
 
+  let testServer = superTest(Server());
+
   function pipeAndReadStreamData(stream, onChunk) {
     const transform = new Transform({
       transform(chunk, enc, cb) {
@@ -30,14 +39,84 @@ describe('API E2E Suite Test', () => {
     });
     return stream.pipe(transform);
   }
+
+  test('GET /unknown - given an unknown route it should respond with 404 status code', async () => {
+    const response = await testServer.get(`/unknown`);
+
+    expect(response.statusCode).toStrictEqual(404);
+  });
+
+  test('GET / - it should respond with the home location and 302 status code', async () => {
+    const response = await testServer.get('/');
+    expect(response.headers.location).toStrictEqual('/home');
+
+    expect(response.statusCode).toStrictEqual(302);
+  });
+
+  test('GET /home - it should respond with file stream', async () => {
+    const response = await testServer.get('/home');
+    const homePage = await fs.promises.readFile(`${publicDirectory}/${homeHTML}`);
+
+    expect(response.text).toStrictEqual(homePage.toString());
+  });
+
+  test('GET /controller - it should respond with file stream', async () => {
+    const response = await testServer.get('/controller');
+    const homePage = await fs.promises.readFile(`${publicDirectory}/${controllerHTML}`);
+
+    expect(response.text).toStrictEqual(homePage.toString());
+  });
+
+  describe('static files', () => {
+    test('GET /file.js - it should respond with 404 if file doesnt exists', async () => {
+      const file = 'file.js';
+      const response = await testServer.get(`/${file}`);
+
+      expect(response.statusCode).toStrictEqual(404);
+    });
+
+    test('GET /controller/css/index.css - given a css file it should respond with content-type text/css ', async () => {
+      const file = 'controller/css/index.css';
+      const response = await testServer.get(`/${file}`);
+      const existingPage = await fs.promises.readFile(`${publicDirectory}/${file}`);
+
+      expect(response.text).toStrictEqual(existingPage.toString());
+      expect(response.statusCode).toStrictEqual(200);
+      expect(response.header['content-type']).toStrictEqual('text/css');
+    });
+
+    test('GET /home/js/animation.js - given a js file it should respond with content-type text/javascript ', async () => {
+      const file = 'home/js/animation.js';
+      const response = await testServer.get(`/${file}`);
+      const existingPage = await fs.promises.readFile(`${publicDirectory}/${file}`);
+
+      expect(response.text).toStrictEqual(existingPage.toString());
+      expect(response.statusCode).toStrictEqual(200);
+      expect(response.header['content-type']).toStrictEqual('text/javascript');
+    });
+
+    test('GET /controller/index.html - given a html file it should respond with content-type text/html ', async () => {
+      const file = controllerHTML;
+      const response = await testServer.get(`/${file}`);
+      const existingPage = await fs.promises.readFile(`${publicDirectory}/${file}`);
+
+      expect(response.text).toStrictEqual(existingPage.toString());
+      expect(response.statusCode).toStrictEqual(200);
+      expect(response.header['content-type']).toStrictEqual('text/html');
+    });
+  });
+
   describe('client workflow', () => {
+    // fix: Aqui alterei o nosso server.js para entregar uma função, assim garantimos que é uma instancia unica para cada teste
     async function getTestServer() {
-      const getSuperTest = (port) => superTest(`http://localhost:${port}`);
+      const getSupertTest = (port) => superTest(`http://localhost:${port}`);
       const port = await getAvailablePort();
       return new Promise((resolve, reject) => {
-        const server = Server.listen(port)
+        // fix: alterei para chamar o server como uma funcao
+        const server = Server()
+          .listen(port)
           .once('listening', () => {
-            const testServer = getSuperTest(port);
+            const testServer = getSupertTest(port);
             const response = {
               testServer,
               kill() {
@@ -54,7 +133,9 @@ describe('API E2E Suite Test', () => {
     function commandSender(testServer) {
       return {
         async send(command) {
-          const response = await testServer.post('/controller').send({ command });
+          const response = await testServer.post('/controller').send({
+            command,
+          });
 
           expect(response.text).toStrictEqual(commandResponse);
         },
@@ -65,6 +146,7 @@ describe('API E2E Suite Test', () => {
       const server = await getTestServer();
       const onChunk = jest.fn();
       pipeAndReadStreamData(server.testServer.get('/stream'), onChunk);
+
       await setTimeout(RETENTION_DATA_PERIOD);
       server.kill();
       expect(onChunk).not.toHaveBeenCalled();
@@ -74,7 +156,6 @@ describe('API E2E Suite Test', () => {
       const server = await getTestServer();
       const onChunk = jest.fn();
       const { send } = commandSender(server.testServer);
-
       pipeAndReadStreamData(server.testServer.get('/stream'), onChunk);
 
       await send(possibleCommands.start);
@@ -82,10 +163,10 @@ describe('API E2E Suite Test', () => {
       await send(possibleCommands.stop);
 
       const [[buffer]] = onChunk.mock.calls;
-
-      server.kill();
       expect(buffer).toBeInstanceOf(Buffer);
       expect(buffer.length).toBeGreaterThan(1000);
+
+      server.kill();
     });
   });
 });

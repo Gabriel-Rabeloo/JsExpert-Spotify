@@ -39,7 +39,7 @@ const routes = async (request, response) => {
     const { stream, onClose } = controller.createClientStream();
 
     request.once('close', onClose);
-    response.writeHead(200, { 'Content-type': 'audio/mpeg', 'Accept-Rages': 'bytes' });
+    response.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Accept-Ranges': 'bytes' });
 
     return stream.pipe(response);
   }

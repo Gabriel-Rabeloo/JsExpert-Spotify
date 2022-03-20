@@ -111,43 +111,53 @@ describe('#Routes - test switch for api response', () => {
     expect(mockFileStream.pipe).toHaveBeenCalledWith(params.response);
     expect(params.response.writeHead).not.toHaveBeenCalledWith();
   });
+  test('GET /stream?id=123 - should call createClientStream', async () => {
+    const params = TestUtil.defaultHandleParams();
 
-  test(`POST /unknown - given an inexistent route it should response with 404`, async () => {
+    params.request.method = 'GET';
+    params.request.url = '/stream';
+    const stream = TestUtil.generateReadableStream(['test']);
+    jest.spyOn(stream, 'pipe').mockReturnValue();
+
+    const onClose = jest.fn();
+    jest.spyOn(Controller.prototype, Controller.prototype.createClientStream.name).mockReturnValue({
+      onClose,
+      stream,
+    });
+
+    await handler(...params.values());
+    params.request.emit('close');
+
+    expect(params.response.writeHead).toHaveBeenCalledWith(200, {
+      'Content-Type': 'audio/mpeg',
+      'Accept-Ranges': 'bytes',
+    });
+
+    expect(Controller.prototype.createClientStream).toHaveBeenCalled();
+    expect(stream.pipe).toHaveBeenCalledWith(params.response);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  test('POST /controller - should call handleCommand', async () => {
     const params = TestUtil.defaultHandleParams();
 
     params.request.method = 'POST';
-    params.request.url = 'unknown';
-    await handler(...params.values());
-    expect(params.response.writeHead).toHaveBeenCalledWith(404);
-    expect(params.response.end).toHaveBeenCalled();
-  });
+    params.request.url = '/controller';
+    const body = {
+      command: 'start',
+    };
 
-  test(`given inexistent file it should response with 404`, async () => {
-    const params = TestUtil.defaultHandleParams();
+    params.request.push(JSON.stringify(body));
 
-    params.request.method = 'GET';
-    params.request.url = 'index.png';
-
-    jest
-      .spyOn(Controller.prototype, Controller.prototype.getFileStream.name)
-      .mockRejectedValue(new Error('Error: ENOENT: no such file or direct'));
+    const jsonResult = {
+      ok: '1',
+    };
+    jest.spyOn(Controller.prototype, Controller.prototype.handleCommand.name).mockResolvedValue(jsonResult);
 
     await handler(...params.values());
-    expect(params.response.writeHead).toHaveBeenCalledWith(404);
-    expect(params.response.end).toHaveBeenCalled();
-  });
 
-  test(`given an error it should respond with 500`, async () => {
-    const params = TestUtil.defaultHandleParams();
-
-    params.request.method = 'GET';
-    params.request.url = 'index.png';
-
-    jest.spyOn(Controller.prototype, Controller.prototype.getFileStream.name).mockRejectedValue(new Error('Error:'));
-
-    await handler(...params.values());
-    expect(params.response.writeHead).toHaveBeenCalledWith(500);
-    expect(params.response.end).toHaveBeenCalled();
+    expect(Controller.prototype.handleCommand).toHaveBeenCalledWith(body);
+    expect(params.response.end).toHaveBeenCalledWith(JSON.stringify(jsonResult));
   });
 });
 
